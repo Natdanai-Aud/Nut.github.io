@@ -1,8 +1,6 @@
-# Nut.github.io
+# Interactive Computer Graphics-MyCV
 
-นายณัฐดนัย อัศววัฒนวงศ์
-
-6721651343
+6721651343 นายณัฐดนัย อัศววัฒนวงศ์ (นัท)
 
 natdanai.aud@ku.th
 
