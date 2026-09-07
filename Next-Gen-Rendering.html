@@ -47,7 +47,6 @@
     import * as THREE from 'three';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-    import GUI from 'https://cdn.jsdelivr.net/npm/lil-gui@0.19/+esm';
 
     // ── Renderer ──
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -393,88 +392,13 @@
       scene.add(carModel);
       document.getElementById('loading').classList.add('hidden');
 
-      // ══════════════════════════════════════════
-      // ── GUI: Main Character (PBR) Attributes ──
-      // ══════════════════════════════════════════
-      const carPBR = {
-        baseColor: '#ffffff',
-        metalness: 1.0,
-        roughness: 0.0,
-        envIntensity: 1.5,
-      };
-
-      const applyCarPBR = () => {
-        uniqueMaterials.forEach((mat) => {
-          mat.color.set(carPBR.baseColor);
-          mat.metalness = carPBR.metalness;
-          mat.roughness = carPBR.roughness;
-          mat.envMapIntensity = carPBR.envIntensity;
-          mat.needsUpdate = true;
-        });
-      };
-
-      const carFolder = gui.addFolder('Main Character (PBR)');
-      carFolder.addColor(carPBR, 'baseColor').name('Base Color').onChange(applyCarPBR);
-      carFolder.add(carPBR, 'metalness', 0, 1, 0.01).name('Metallic').onChange(applyCarPBR);
-      carFolder.add(carPBR, 'roughness', 0, 1, 0.01).name('Roughness').onChange(applyCarPBR);
-      carFolder.add(carPBR, 'envIntensity', 0, 3, 0.05).name('Env Reflection').onChange(applyCarPBR);
-      carFolder.open();
-      applyCarPBR();
-
-      console.log('Model loaded. PBR Attributes:', carPBR);
+      console.log('Model loaded.');
     },
     null,
     (error) => {
       console.error('Error loading GLB:', error);
       document.getElementById('loading').textContent = 'Error loading GLB model.';
     });
-
-    // ══════════════════════════════════════════
-    // ── GUI (lil-gui) ──
-    // ══════════════════════════════════════════
-    const gui = new GUI({ title: 'Light Controls', width: 300 });
-
-    // Directional Light folder
-    const dirFolder = gui.addFolder('Directional Light');
-    dirFolder.addColor(lightSettings.directional, 'color').name('Color').onChange(v => dirLight.color.set(v));
-    dirFolder.add(lightSettings.directional, 'intensity', 0, 10, 0.1).name('Intensity').onChange(v => dirLight.intensity = v);
-    dirFolder.add(lightSettings.directional, 'x', -15, 15, 0.1).name('Position X').onChange(v => dirLight.position.x = v);
-    dirFolder.add(lightSettings.directional, 'y', 0, 15, 0.1).name('Position Y').onChange(v => dirLight.position.y = v);
-    dirFolder.add(lightSettings.directional, 'z', -15, 15, 0.1).name('Position Z').onChange(v => dirLight.position.z = v);
-
-    // Ambient Light folder
-    const ambFolder = gui.addFolder('Ambient Light');
-    ambFolder.addColor(lightSettings.ambient, 'color').name('Color').onChange(v => ambientLight.color.set(v));
-    ambFolder.add(lightSettings.ambient, 'intensity', 0, 3, 0.05).name('Intensity').onChange(v => ambientLight.intensity = v);
-
-    // Point Light 1 folder
-    const pl1Folder = gui.addFolder('Point Light 1 (Warm)');
-    pl1Folder.addColor(lightSettings.pointLight1, 'color').name('Color').onChange(v => { pointLight1.color.set(v); lightHelperMat1.color.set(v); });
-    pl1Folder.add(lightSettings.pointLight1, 'intensity', 0, 15, 0.1).name('Intensity').onChange(v => pointLight1.intensity = v);
-    pl1Folder.add(lightSettings.pointLight1, 'x', -15, 15, 0.1).name('Position X').onChange(v => pointLight1.position.x = v);
-    pl1Folder.add(lightSettings.pointLight1, 'y', 0, 10, 0.1).name('Position Y').onChange(v => pointLight1.position.y = v);
-    pl1Folder.add(lightSettings.pointLight1, 'z', -15, 15, 0.1).name('Position Z').onChange(v => pointLight1.position.z = v);
-
-    // Point Light 2 folder
-    const pl2Folder = gui.addFolder('Point Light 2 (Cool)');
-    pl2Folder.addColor(lightSettings.pointLight2, 'color').name('Color').onChange(v => { pointLight2.color.set(v); lightHelperMat2.color.set(v); });
-    pl2Folder.add(lightSettings.pointLight2, 'intensity', 0, 15, 0.1).name('Intensity').onChange(v => pointLight2.intensity = v);
-    pl2Folder.add(lightSettings.pointLight2, 'x', -15, 15, 0.1).name('Position X').onChange(v => pointLight2.position.x = v);
-    pl2Folder.add(lightSettings.pointLight2, 'y', 0, 10, 0.1).name('Position Y').onChange(v => pointLight2.position.y = v);
-    pl2Folder.add(lightSettings.pointLight2, 'z', -15, 15, 0.1).name('Position Z').onChange(v => pointLight2.position.z = v);
-
-    // Ground Material folder
-    const groundFolder = gui.addFolder('Ground (PBR)');
-    groundFolder.addColor(groundSettings, 'color').name('Base Color').onChange(v => groundMat.color.set(v));
-    groundFolder.add(groundSettings, 'metalness', 0, 1, 0.01).name('Metallic').onChange(v => groundMat.metalness = v);
-    groundFolder.add(groundSettings, 'roughness', 0, 1, 0.01).name('Roughness').onChange(v => groundMat.roughness = v);
-
-    // Tone mapping
-    const toneSettings = { exposure: 1.2 };
-    const renderFolder = gui.addFolder('Rendering');
-    renderFolder.add(toneSettings, 'exposure', 0.2, 3, 0.05).name('Exposure').onChange(v => renderer.toneMappingExposure = v);
-
-    gui.close();
 
     // ══════════════════════════════════════════
     // ── ANIMATION LOOP ──
@@ -511,7 +435,6 @@
     console.log('  - Base Color: Defined per material');
     console.log('  - Metallic: 0 (dielectric) to 1 (conductor)');
     console.log('  - Roughness: 0 (mirror-smooth) to 1 (fully diffuse)');
-    console.log('Use GUI panel (top-right) to adjust lights and materials in real-time.');
   </script>
 </body>
 </html>
