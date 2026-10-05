@@ -91,10 +91,27 @@
             border-radius: 6px;
             padding: 7px 10px;
         }
+
+        #backBtn {
+            position: fixed;
+            top: 16px;
+            left: 16px;
+            z-index: 50;
+            color: #fff;
+            text-decoration: none;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
     </style>
 </head>
 
 <body>
+    <a href="index.html" id="backBtn">&larr; Back</a>
     <!-- เลือกภาษา: เปลี่ยนทั้งภาพบนจอและข้อความป้าย เริ่มต้นไทย -->
     <div id="lang">
         <button type="button" data-lang="th" class="on">ไทย</button>
@@ -148,7 +165,7 @@
         camera.lookAt(0, 0, 0);
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
 
-  
+
         // ไฟขาวทั้งชุดถอยให้ไฟเหลืองที่ตัวละครเด่นกว่า (ดูค่า STICK_SPOT_* ที่ล่าง)
         // pointLight ตัวนี้สำคัญที่สุด มันอยู่ที่ (0,2,0) คือตรงเหนือหัวตัวละคร
         // และไม่มี distance/decay แปลว่าไม่ตกผลเลย ความสว่างเต็มไปทั้งฉากตลอดเวลา
@@ -163,16 +180,16 @@
         const fillLight = new THREE.PointLight(0xfff0dd, 0.4);
         fillLight.position.set(2, 1.5, 2);
         scene.add(fillLight);
-        
 
-        
+
+
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
         directionalLight.position.set(10, 10, 10);
         directionalLight.castShadow = true;
         scene.add(directionalLight);
 
-       
+
 
 
         scene.background = new THREE.Color(0xffffff);
