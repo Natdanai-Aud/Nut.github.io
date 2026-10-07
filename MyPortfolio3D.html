@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>MyPortfolio3D</title>
     <style>
         body {
@@ -107,6 +108,42 @@
             cursor: pointer;
             transition: background 0.2s;
         }
+
+        /* มือถือ: ปุ่ม/ตัวหนังสือข้างบนต้องแตะง่าย (เป้าแตะ ~44px) + กัน focusUI ซ้อนปุ่ม Back */
+        @media (max-width: 600px) {
+            #backBtn {
+                top: 10px;
+                left: 10px;
+                font-size: 1rem;
+                padding: 12px 16px;
+            }
+
+            #lang {
+                right: 10px;
+                top: 10px;
+            }
+
+            #lang button {
+                font-size: 15px;
+                padding: 12px 16px;
+            }
+
+            #focusUI {
+                left: 10px;
+                top: 64px;
+            }
+
+            #focusUI button,
+            #focusHint {
+                font-size: 15px;
+                padding: 12px 14px;
+            }
+
+            .pin-label {
+                font-size: 14px;
+                padding: 6px 12px;
+            }
+        }
     </style>
 </head>
 
@@ -189,9 +226,6 @@
         directionalLight.castShadow = true;
         scene.add(directionalLight);
 
-
-
-
         scene.background = new THREE.Color(0xffffff);
 
         // โฟลเดอร์เก็บไฟล์ 3 มิติทั้งหมด (โมเดลใน 3D/ และภาพบนจอใน 3D/screen/)
@@ -199,7 +233,7 @@
         // ชื่อโฟลเดอร์ต้องเป็น Model3D (ไม่ใช่ Model) ตามที่ Next-Gen-Rendering.html และ Interactive-3D-Portfolio.html ใช้
         const ASSET_BASE = 'Model3D/3D/';
 
-        // โมเดลทั้ง 7 ไฟล์ export จาก model.blend ไฟล์เดียวกัน จึงอยู่ใน world space ชุดเดียวกัน
+        // โมเดลทั้ง 16 ไฟล์ export จาก model.blend ไฟล์เดียวกัน จึงอยู่ใน world space ชุดเดียวกัน
         // (ชื่อ node กับค่า translation ตรงกับ Model3D/Room.glb ทุกตัว) โหลดแล้วใส่ตำแหน่งเดิมได้เลย
         // Text.glb = ข้อความ 3 มิติ ติดอยู่บนผนังซ้ายหันหน้าเข้าห้อง อยู่ในกรอบเดียวกับห้อง
         // จึงไม่เปลี่ยนการจัดวางฉาก ไม่ต้องวางตำแหน่งเพิ่ม (ไม่อยู่ในโซนที่บังจอ จึงไม่ต้องซ่อนตอนฟักส์)
@@ -211,7 +245,16 @@
             'FanModel.glb',
             'MusicStandSheetPlateModel.glb',
             'Stickman_Flat.glb',
-            'Text.glb'
+            'Text.glb',
+            'Decor_Plants.glb',
+            'Decor_SmallProps.glb',
+            'Decor_Zone.glb',
+            'BronzeCoin.glb',
+            'GoldCoin.glb',
+            'SilverCoin.glb',
+            'Wall_ClockPoster.glb',
+            'Wall_Curtain.glb',
+            'Wall_Shelf.glb'
         ];
 
         const classroom = new THREE.Group();
@@ -227,6 +270,57 @@
             en: { btn: 'English', open: 'open', close: 'close', play: 'play', pause: 'pause', texture: ASSET_BASE + 'screen/EN.png', back: 'Back', hint: 'Press Esc to exit' }
         };
         let lang = 'th';
+
+        // ===== โชว์ Shader 3 เหรียญ (Gold=Cel / Silver=PBR / Bronze=Vertex) =====
+        // PBR ใช้ไฟเดิมในฉากเท่านั้น ไม่เพิ่ม envMap/HDRI ตามที่ตกลงกัน
+        const MEDAL_INFO = {
+            gold: {
+                th: { tag: 'ทอง: Cel Shading', hint: 'เหรียญทอง Cel (Toon 3-step + ขอบดำ) — กด Esc เพื่อออก' },
+                en: { tag: 'Gold: Cel', hint: 'Gold medal Cel (Toon 3-step + outline) — Press Esc to exit' }
+            },
+            silver: {
+                th: { tag: 'เงิน: PBR', hint: 'เหรียญเงิน PBR (metalness 1 / roughness 0.28) — กด Esc เพื่อออก' },
+                en: { tag: 'Silver: PBR', hint: 'Silver medal PBR (metalness 1 / roughness 0.28) — Press Esc to exit' }
+            },
+            bronze: {
+                th: { tag: 'ทองแดง: Vertex Shader', hint: 'เหรียญทองแดง Vertex wobble (sine บน normal) — กด Esc เพื่อออก' },
+                en: { tag: 'Bronze: Vertex', hint: 'Bronze medal Vertex wobble (sine on normal) — Press Esc to exit' }
+            }
+        };
+        const PBR_PARAMS = { metalness: 1.0, roughness: 0.28 };
+        const CEL_OUTLINE_COLOR = 0x111111;
+        const CEL_OUTLINE_SCALE = 1.03;
+        // Cel เข้มเฉพาะเหรียญทอง (Silver ไม่ใช้ Cel แล้ว): 5-step แถบแข็งกว่า + ขอบหนากว่า
+        const GOLD_CEL_STEPS = [70, 130, 180, 220, 255];
+        const GOLD_CEL_OUTLINE_SCALE = 1.05;
+        const BRONZE_WOBBLE_AMP = 0.03; // local space กันเพี้ยนหลัง frameClassroom() scale
+        const MEDAL_FOCUS_MARGIN = 2.0; // เหรียญเล็กกว่าจอมาก ต้องเผื่อขอบเยอะกว่า FOCUS_MARGIN
+        const MEDAL_FOCUS_MIN_DIST = 0.9; // กันกล้องจมเข้าใกล้จนต่ำกว่า near (0.5)
+        // ไฟส่องเหรียญเฉพาะ (ลอกแพทเทิร์น STICK_SPOT_*: r128 ปิด physicallyCorrectLights
+        // distance/decay ต้อง > 0 ไม่งั้นไฟไม่ตกผล; castShadow=false กัน acne บนเหรียญจิ๋ว)
+        // ไม่แตะไฟเดิม 4 ดวงในฉาก (ที่หรี่ไว้ให้สปอตเหลืองตัวละครเด่น)
+        const MEDAL_SPOT_COLOR = 0xffffff;
+        const MEDAL_SPOT_INTENSITY = 4;
+        const MEDAL_SPOT_ANGLE = 0.5;
+        const MEDAL_SPOT_PENUMBRA = 0.5;
+        const MEDAL_SPOT_DISTANCE = 4;
+        const MEDAL_SPOT_DECAY = 2;
+        const MEDAL_SPOT_HEIGHT = 0.35; // เหนือยอดเหรียญ (หน่วยโลกหลัง scale)
+        const MEDAL_SPOT_FRONT = 0.5; // ด้านหน้าเหรียญ
+        const medalSpots = []; // [{ kind, spot }]
+        let medalGoldRoot = null;
+        let medalSilverRoot = null;
+        let medalBronzeRoot = null;
+        let medalGoldLabel = null;
+        let medalSilverLabel = null;
+        let medalBronzeLabel = null;
+        let medalFocus = null; // null | 'gold' | 'silver' | 'bronze' (โหมด inspect: ไม่ล็อกกล้อง)
+        // จุดคืนกล้องตอนเลิก inspect (แยกจากของจอ กันทับกัน)
+        // จำเฉพาะตอนเริ่ม inspect จากสถานะว่าง ไม่จำตอนสลับเหรียญ A->B (ไม่งั้นจุดคืนกลายเป็นวิวเหรียญ A)
+        const savedMedalPos = new THREE.Vector3();
+        const savedMedalTarget = new THREE.Vector3();
+        let hasSavedMedal = false;
+        const bronzeTime = { value: 0 }; // uniform กลาง แชร์ให้ทุก material ทองแดง (อัปเดตที่เดียวใน animate)
 
         // ความสว่างภาพบนจอ: ผิวจอเป็น emissive ล้วน (ไม่รับแสงในฉาก)
         // มากกว่านี้ = สว่างขึ้น (1.1-1.4) / น้อยกว่านี้ = มืดลง (0.6-0.8)
@@ -341,7 +435,7 @@
         // ข้อจำกัดของ r128: raycast บน SkinnedMesh ใช้ทรง bind pose ไม่ตามท่าที่กำลังเล่น
         // จึงคลิกลำตัว/หัว/ขาได้เสมอ แต่ช่วงที่แขนกำลังกวาดอาจคลิกไม่โดน
         function pickStickman() {
-            if (!stickmanRoot || !pointerInside || focusMode) return false;
+            if (!stickmanRoot || !pointerInside || focusMode || medalFocus) return false;
             pointerNDC.x = (pointerX / window.innerWidth) * 2 - 1;
             pointerNDC.y = -(pointerY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(pointerNDC, camera);
@@ -369,8 +463,9 @@
 
         // ยิง raycast ที่ Screen_Housing
         // (ตอนจอกาง ผิวจอทับกล่องอยู่ ถ้ายิงรวมทั้งชุดต้องใช้ระยะจริง)
+        // ล็อกเหรียญอยู่ picking ไม่ทำงาน ออกด้วย Back/Esc เท่านั้น
         function pickHousing() {
-            if (!screenHousing || !pointerInside) return false;
+            if (!screenHousing || !pointerInside || medalFocus) return false;
             pointerNDC.x = (pointerX / window.innerWidth) * 2 - 1;
             pointerNDC.y = -(pointerY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(pointerNDC, camera);
@@ -390,17 +485,20 @@
         const focusPos = new THREE.Vector3();
         let focusAnim = null;
 
-        // วัตถุที่ยืนระหว่างกล้องกับจอ (แท่นเพลงกับตัวละคร) จะบังภาพตอนกล้องล็อกหน้าจอ
+        // วัตถุที่ยืนระหว่างกล้องกับจอ (แท่นเพลง ตัวละคร และเหรียญ 3 เหรียญ) จะบังภาพตอนกล้องล็อกหน้าจอ
         // จึงซ่อนชั่วคราวเฉพาะตอนอยู่ในโหมดนี้ ตอนหมุนมุมมองปกติยังเห็นครบ
         const focusHidden = [];
 
         const focusUI = document.getElementById('focusUI');
         const focusBack = document.getElementById('focusBack');
         const focusHint = document.getElementById('focusHint');
+        // ปุ่ม ← Back ของเพจอยู่มุมเดียวกับ focusUI (ซ้อนกันตอน inspect/ล็อกจอ)
+        // โชว์ focusUI เมื่อไหร่ให้ซ่อนปุ่มเพจชั่วคราว เหลือแถวเดียว ไม่สับสนว่ามีปุ่มย้อนกลับ 2 ปุ่ม
+        const backBtnEl = document.getElementById('backBtn');
 
         // ยิง raycast ที่ Screen_Surface (ผิวจอ) คนละชุดกับกล่องจอ
         function pickSurface() {
-            if (!screenSurface || !pointerInside) return false;
+            if (!screenSurface || !pointerInside || medalFocus) return false;
             pointerNDC.x = (pointerX / window.innerWidth) * 2 - 1;
             pointerNDC.y = -(pointerY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(pointerNDC, camera);
@@ -420,25 +518,7 @@
         // 3. ระยะถอยกล้องคำนวณจาก fov แนวตั้ง + aspect ให้จอเต็มเฟรมพร้อมขอบ
         // คืน false เมื่อคำนวณไม่ได้ เช่น กล่องยุบเป็นศูนย์หรือเสีย ไม่ให้ผู้เรียกทำงานต่อ
         function frameScreenCamera() {
-            if (!screenSurface) return false;
-            const box = new THREE.Box3().setFromObject(screenSurface);
-            if (box.isEmpty()) return false;
-            const size = box.getSize(new THREE.Vector3());
-            if (size.x <= 0 || size.y <= 0 || size.z <= 0) return false;
-            focusCenter.copy(box.getCenter(new THREE.Vector3()));
-
-            const minAxis = (size.x < size.y && size.x < size.z) ? 0 : (size.y < size.z ? 1 : 2);
-            focusNormal.set(0, 0, 0).setComponent(minAxis, 1);
-            screenSurface.updateWorldMatrix(true, false);
-            focusNormal.transformDirection(screenSurface.matrixWorld).normalize();
-            if (focusNormal.dot(camera.position.clone().sub(focusCenter)) < 0) focusNormal.negate();
-
-            const vFov = THREE.MathUtils.degToRad(camera.fov);
-            const distV = (size.y * 0.5 * FOCUS_MARGIN) / Math.tan(vFov * 0.5);
-            const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * camera.aspect);
-            const distH = (size.x * 0.5 * FOCUS_MARGIN) / Math.tan(hFov * 0.5);
-            focusPos.copy(focusCenter).addScaledVector(focusNormal, Math.max(distV, distH));
-            return true;
+            return frameObjectCamera(screenSurface, FOCUS_MARGIN, 0);
         }
 
         // ซ่อน/คืนวัตถุที่บังจอ เรียกตอนเข้าและออกจากโหมดล็อกกล้อง
@@ -447,12 +527,192 @@
         }
 
         function enterScreenFocus() {
-            if (focusMode || !canFocusScreen()) return;
+            if (focusMode || medalFocus || !canFocusScreen()) return;
             if (!frameScreenCamera()) return; // คำนวณมุมกล้องไม่ได้ ก็ไม่ล็อก
+            enterFocusCommon();
+            medalFocus = null;
+            hasSavedMedal = false; // จอยึดวิวปัจจุบัน (วิวเหรียญ) เป็นจุดคืนของมันแทน ไม่ซ้อน restore 2 ชั้น
+            setFocusHidden(true); // แท่นเพลงกับตัวละครอยู่ระหว่างกล้องกับจอ ต้องซ่อนไม่ให้บังจอ
+            focusHint.textContent = LANG[lang].hint;
+            console.log('Screen focus: locked');
+        }
+
+        function exitScreenFocus() {
+            if (!focusMode) return;
+            focusMode = false;
+            medalFocus = null;
+            hasSavedMedal = false;
+            setFocusHidden(false); // คืนแท่นเพลงกับตัวละครกลับเข้าฉาก
+            focusAnim = null;
+            camera.position.copy(savedCameraPos);
+            controls.target.copy(savedTarget);
+            controls.enabled = true;
+            controls.enablePan = true; // กันกรณีเคย inspect เหรียญ (pan ถูกปิด) มาก่อนล็อกจอ
+            focusUI.hidden = true;
+            backBtnEl.style.display = '';
+            console.log('Screen focus: released');
+        }
+
+        // ===== Shader 3 เหรียญ: Gold Cel / Silver PBR / Bronze Vertex =====
+        // PBR: คงสี/map เดิมของไฟล์ไว้ ปรับแค่ metalness/roughness ให้เห็น PBR ชัด
+        // (ไม่เพิ่ม envMap/HDRI/ไฟใหม่ ใช้ไฟเดิม 4 ดวงในฉากเท่านั้น)
+        function applyPBR(root, label) {
+            let n = 0;
+            root.traverse((child) => {
+                if (!child.isMesh) return;
+                const mats = Array.isArray(child.material) ? child.material : [child.material];
+                mats.forEach((m) => {
+                    if (m && m.isMeshStandardMaterial) {
+                        m.metalness = PBR_PARAMS.metalness;
+                        m.roughness = PBR_PARAMS.roughness;
+                        m.needsUpdate = true;
+                        n++;
+                    }
+                });
+            });
+            if (!n) console.error('PBR: no MeshStandardMaterial found in ' + label);
+            else console.log('PBR applied to', label, n, 'material(s): metalness', PBR_PARAMS.metalness, 'roughness', PBR_PARAMS.roughness);
+        }
+
+        // Cel: gradientMap สำหรับ MeshToonMaterial (r128 ใช้ LuminanceFormat + NearestFilter)
+        // รับ steps ได้ (default 3-step เดิม) แคชตามค่า steps
+        const celGradientMaps = {};
+        function getCelGradientMap(steps) {
+            const key = (steps || [90, 160, 255]).join(',');
+            if (celGradientMaps[key]) return celGradientMaps[key];
+            const arr = new Uint8Array(steps || [90, 160, 255]);
+            const tex = new THREE.DataTexture(arr, arr.length, 1, THREE.LuminanceFormat);
+            tex.minFilter = THREE.NearestFilter;
+            tex.magFilter = THREE.NearestFilter;
+            tex.generateMipmaps = false;
+            tex.needsUpdate = true;
+            celGradientMaps[key] = tex;
+            return tex;
+        }
+
+        // Cel: แทนทุก mesh ด้วย Toon + คงสีเดิมของชิ้นนั้นไว้
+        // แล้วแปะเปลือก outline (inverted hull) เป็น child ของแต่ละ mesh
+        // opts: { steps, outlineScale } — default คงเดิม 3-step + CEL_OUTLINE_SCALE
+        function applyCel(root, label, opts) {
+            const o = opts || {};
+            const steps = o.steps || [90, 160, 255];
+            const outlineScale = o.outlineScale || CEL_OUTLINE_SCALE;
+            const gradientMap = getCelGradientMap(steps);
+            let n = 0;
+            const meshes = [];
+            root.traverse((child) => { if (child.isMesh && !child.userData.isOutline) meshes.push(child); });
+            meshes.forEach((mesh) => {
+                const orig = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+                const baseColor = (orig && orig.color) ? orig.color.clone() : new THREE.Color(0xc0c6cc);
+                mesh.material = new THREE.MeshToonMaterial({ color: baseColor, gradientMap: gradientMap });
+                const outline = new THREE.Mesh(
+                    mesh.geometry,
+                    new THREE.MeshBasicMaterial({ color: CEL_OUTLINE_COLOR, side: THREE.BackSide })
+                );
+                outline.scale.multiplyScalar(outlineScale);
+                outline.castShadow = false;
+                outline.receiveShadow = false;
+                outline.userData.isOutline = true;
+                mesh.add(outline);
+                n++;
+            });
+            if (!n) console.error('Cel: no mesh found in ' + label);
+            else console.log('Cel applied to', label, n, 'mesh(es): Toon ' + steps.length + '-step + outline x' + outlineScale);
+        }
+
+        // Bronze: ฉีด vertex shader ผ่าน onBeforeCompile คงแสง/เงาเดิมไว้
+        // ขยับจุดยอดตาม normal ด้วย sine 2 ชั้น (uTime มาจาก bronzeTime ที่ animate อัปเดต)
+        function applyBronzeVertex(root) {
+            let n = 0;
+            const seen = new Set();
+            root.traverse((child) => {
+                if (!child.isMesh || child.userData.isOutline) return;
+                const mats = Array.isArray(child.material) ? child.material : [child.material];
+                mats.forEach((m) => {
+                    if (m && m.isMeshStandardMaterial && !seen.has(m)) {
+                        seen.add(m);
+                        m.onBeforeCompile = (shader) => {
+                            shader.uniforms.uTime = bronzeTime;
+                            shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
+                                '#include <begin_vertex>',
+                                '#include <begin_vertex>\n' +
+                                'float bronzeW = sin(position.y * 12.0 + uTime * 2.5) * 0.5 + sin(position.x * 9.0 - uTime * 1.8) * 0.5;\n' +
+                                'transformed += normal * bronzeW * ' + BRONZE_WOBBLE_AMP.toFixed(3) + ';'
+                            );
+                        };
+                        m.customProgramCacheKey = () => 'bronzeWobble';
+                        m.needsUpdate = true;
+                        n++;
+                    }
+                });
+            });
+            if (!n) console.error('Bronze Vertex: no MeshStandardMaterial found in BronzeCoin.glb');
+            else console.log('Bronze Vertex applied to', n, 'material(s): sine wobble amp', BRONZE_WOBBLE_AMP);
+        }
+
+        // ป้ายลอยเหนือเหรียญ: วัด local space ก่อน frameClassroom() scale (แบบเดียวกับ stickLabel)
+        function attachMedalLabel(root, kind) {
+            root.updateMatrixWorld(true);
+            const toLocal = new THREE.Matrix4().copy(root.matrixWorld).invert();
+            const box = new THREE.Box3().setFromObject(root).applyMatrix4(toLocal);
+            if (box.isEmpty()) return null;
+            const labelEl = document.createElement('div');
+            labelEl.className = 'pin-label';
+            const label = new THREE.CSS2DObject(labelEl);
+            const c = box.getCenter(new THREE.Vector3());
+            label.position.set(c.x, box.max.y + 0.15, c.z);
+            label.visible = false;
+            root.add(label);
+            return label;
+        }
+
+        function refreshMedalLabels() {
+            const setOne = (label, kind) => {
+                if (!label) return;
+                const want = MEDAL_INFO[kind][lang].tag;
+                if (label.element.textContent !== want) label.element.textContent = want;
+            };
+            setOne(medalGoldLabel, 'gold');
+            setOne(medalSilverLabel, 'silver');
+            setOne(medalBronzeLabel, 'bronze');
+        }
+
+        // raycast หาเหรียญทั้งกลุ่ม (รวม outline child ด้วย กดโดนขอบก็ถือว่าโดนเหรียญ)
+        // ล็อกเหรียญอยู่ไม่รับ picking ซ้ำ ออกด้วย Back/Esc เท่านั้น
+        function pickMedal(root) {
+            if (!root || !pointerInside || focusMode || medalFocus) return false;
+            pointerNDC.x = (pointerX / window.innerWidth) * 2 - 1;
+            pointerNDC.y = -(pointerY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(pointerNDC, camera);
+            return raycaster.intersectObject(root, true).length > 0;
+        }
+
+        // คำนวณกล้องโฟกัสวัตถุชิ้นใดก็ได้ (จอใช้ margin เดิม เหรียญใช้ margin ใหญ่กว่า + กันระยะใกล้สุด)
+        function frameObjectCamera(obj, margin, minDist) {
+            if (!obj) return false;
+            const box = new THREE.Box3().setFromObject(obj);
+            if (box.isEmpty()) return false;
+            const size = box.getSize(new THREE.Vector3());
+            if (size.x <= 0 || size.y <= 0 || size.z <= 0) return false;
+            focusCenter.copy(box.getCenter(new THREE.Vector3()));
+            const minAxis = (size.x < size.y && size.x < size.z) ? 0 : (size.y < size.z ? 1 : 2);
+            focusNormal.set(0, 0, 0).setComponent(minAxis, 1);
+            obj.updateWorldMatrix(true, false);
+            focusNormal.transformDirection(obj.matrixWorld).normalize();
+            if (focusNormal.dot(camera.position.clone().sub(focusCenter)) < 0) focusNormal.negate();
+            const vFov = THREE.MathUtils.degToRad(camera.fov);
+            const distV = (size.y * 0.5 * margin) / Math.tan(vFov * 0.5);
+            const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * camera.aspect);
+            const distH = (size.x * 0.5 * margin) / Math.tan(hFov * 0.5);
+            const dist = Math.max(Math.max(distV, distH), minDist || 0);
+            focusPos.copy(focusCenter).addScaledVector(focusNormal, dist);
+            return true;
+        }
+
+        function enterFocusCommon() {
             savedCameraPos.copy(camera.position);
             savedTarget.copy(controls.target);
             focusMode = true;
-            setFocusHidden(true); // แท่นเพลงกับตัวละครอยู่ระหว่างกล้องกับจอ ต้องซ่อนไม่ให้บังจอ
             focusAnim = {
                 start: performance.now(),
                 fromPos: camera.position.clone(),
@@ -462,20 +722,70 @@
             };
             controls.enabled = false;
             focusUI.hidden = false;
+            backBtnEl.style.display = 'none';
             setLabel(screenLabel, '', false);
-            console.log('Screen focus: locked');
         }
 
-        function exitScreenFocus() {
-            if (!focusMode) return;
-            focusMode = false;
-            setFocusHidden(false); // คืนแท่นเพลงกับตัวละครกลับเข้าฉาก
-            focusAnim = null;
-            camera.position.copy(savedCameraPos);
-            controls.target.copy(savedTarget);
+        // ===== โหมด inspect เหรียญ: ล็อก picking จนกว่าจะออกด้วยปุ่ม/Esc =====
+        // คลิกเหรียญแล้วกล้องหันเป้าไปหาเหรียญ (tween 450ms) แต่ controls ยังเปิดอยู่:
+        // หมุนรอบ (rotate) + ซูม (zoom) ได้, ปิดแค่ pan เป้าจะได้ไม่หลุดจากเหรียญ
+        // ต่างจากจอ (enterScreenFocus) ที่ controls.enabled=false ต้องออกด้วย Back/Esc
+        // ระหว่างล็อก คลิกฉากทั้งหมดไม่ทำงาน (จอ/กล่องจอ/ตัวละคร/เหรียญอื่น/ที่ว่าง) ออกได้แค่ Back/Esc
+        function enterMedalInspect(kind) {
+            if (focusMode || medalFocus) return; // ล็อกเหรียญอยู่ คลิกซ้ำ/สลับเหรียญไม่ทำอะไร ออกด้วย Back/Esc เท่านั้น
+            const root = medalRootOf(kind);
+            if (!root) return;
+            if (!frameObjectCamera(root, MEDAL_FOCUS_MARGIN, MEDAL_FOCUS_MIN_DIST)) return; // คำนวณมุมไม่ได้ก็ไม่เล็ง
+            // จำจุดคืนเฉพาะตอนเริ่มจากสถานะว่าง (เข้าถึงจุดนี้ได้เฉพาะตอนยังไม่ล็อก เพราะการ์ดด้านบน)
+            if (!medalFocus) {
+                savedMedalPos.copy(camera.position);
+                savedMedalTarget.copy(controls.target);
+                hasSavedMedal = true;
+            }
+            focusAnim = {
+                start: performance.now(),
+                fromPos: camera.position.clone(),
+                toPos: focusPos.clone(),
+                fromTarget: controls.target.clone(),
+                toTarget: focusCenter.clone()
+            };
+            medalFocus = kind;
             controls.enabled = true;
+            controls.enableZoom = true;
+            controls.enableRotate = true;
+            controls.enablePan = false;
+            focusUI.hidden = false;
+            backBtnEl.style.display = 'none';
+            focusHint.textContent = MEDAL_INFO[kind][lang].hint;
+            console.log('Medal inspect: aim ->', kind);
+        }
+
+        // เลิก inspect = ลอยกล้องกลับจุดก่อนคลิก (tween ผ่าน focusAnim เดิม) + เปิด pan คืน
+        // ครอบคลุมทั้ง 4 ทางออก: คลิกเหรียญซ้ำ / คลิกพื้นที่ว่าง / Back / Esc / คลิกตัวละคร
+        function exitMedalInspect() {
+            if (!medalFocus) return;
+            medalFocus = null;
+            controls.enabled = true;
+            controls.enablePan = true;
             focusUI.hidden = true;
-            console.log('Screen focus: released');
+            backBtnEl.style.display = '';
+            if (hasSavedMedal) {
+                hasSavedMedal = false;
+                focusAnim = {
+                    start: performance.now(),
+                    fromPos: camera.position.clone(),
+                    toPos: savedMedalPos.clone(),
+                    fromTarget: controls.target.clone(),
+                    toTarget: savedMedalTarget.clone()
+                };
+            } else {
+                focusAnim = null;
+            }
+            console.log('Medal inspect: cleared (camera restored)');
+        }
+
+        function medalRootOf(kind) {
+            return kind === 'gold' ? medalGoldRoot : kind === 'silver' ? medalSilverRoot : medalBronzeRoot;
         }
 
         // easeInOutCubic ให้เริ่มช้า เร็วกลาง แล้วจบช้า
@@ -525,6 +835,7 @@
             classroom.position.sub(center.multiplyScalar(scale));
             // ต้องวางไฟหลัง scale/position ของฉากเสร็จ ไฟถึงจะได้ตำแหน่งโลกที่ถูกต้อง
             placeStickSpot();
+            placeMedalLights();
         }
 
         // วางไฟเหลืองให้เล็งตัวละคร โดยวัดจากกล่องขอบเขตจริงแทนการ hardcode
@@ -560,6 +871,48 @@
             stickSpot.target.position.copy(center);
             console.log('Stickman spot:', stickSpot.position.toArray().map((v) => +v.toFixed(3)),
                 '-> target', center.toArray().map((v) => +v.toFixed(3)));
+        }
+
+        // ไฟส่องเหรียญเฉพาะ (Silver/Bronze) วัดตำแหน่งโลกจริงหลัง frameClassroom() scale
+        // Gold ไม่สร้างสปอต ใช้ไฟเดิมในฉากอย่างเดียว
+        // ติดเฉพาะตอน inspect เหรียญนั้น (คลิก) ไม่ติดตอนชี้ hover — ดับเองเมื่อ medalFocus เคลียร์
+        // ไฟอยู่ใน scene graph + target อยู่ใน scene ทิศลำแสงถึงอัปเดต (แบบเดียวกับ placeStickSpot)
+        function placeMedalLights() {
+            classroom.updateMatrixWorld(true);
+            const jobs = [
+                ['silver', medalSilverRoot],
+                ['bronze', medalBronzeRoot]
+            ];
+            jobs.forEach(([kind, root]) => {
+                if (!root) return;
+                root.updateMatrixWorld(true);
+                const box = new THREE.Box3().setFromObject(root);
+                if (box.isEmpty()) return;
+                const center = box.getCenter(new THREE.Vector3());
+                let entry = null;
+                for (const e of medalSpots) { if (e.kind === kind) { entry = e; break; } }
+                if (!entry) {
+                    const spot = new THREE.SpotLight(
+                        MEDAL_SPOT_COLOR,
+                        MEDAL_SPOT_INTENSITY,
+                        MEDAL_SPOT_DISTANCE,
+                        MEDAL_SPOT_ANGLE,
+                        MEDAL_SPOT_PENUMBRA,
+                        MEDAL_SPOT_DECAY
+                    );
+                    spot.castShadow = false;
+                    spot.visible = false; // เริ่มดับไว้ ติดเฉพาะตอน inspect เหรียญนั้น
+                    scene.add(spot);
+                    scene.add(spot.target);
+                    entry = { kind: kind, spot: spot };
+                    medalSpots.push(entry);
+                }
+                entry.spot.position.set(center.x, box.max.y + MEDAL_SPOT_HEIGHT, center.z + MEDAL_SPOT_FRONT);
+                entry.spot.target.position.copy(center);
+                console.log('Medal spot[' + kind + ']:',
+                    entry.spot.position.toArray().map((v) => +v.toFixed(3)),
+                    '-> target', center.toArray().map((v) => +v.toFixed(3)));
+            });
         }
 
         const loader = new THREE.GLTFLoader();
@@ -673,8 +1026,36 @@
                     }
                 }
 
+                // ===== 3 เหรียญ: โชว์ Shader คนละแบบ =====
+                // Gold = Cel (Toon 3-step + ขอบดำ inverted hull)
+                if (file === 'GoldCoin.glb') {
+                    medalGoldRoot = gltf.scene;
+                    applyCel(gltf.scene, 'GoldCoin.glb', { steps: GOLD_CEL_STEPS, outlineScale: GOLD_CEL_OUTLINE_SCALE });
+                    medalGoldLabel = attachMedalLabel(gltf.scene, 'gold');
+                    refreshMedalLabels();
+                    focusHidden.push(gltf.scene); // เหรียญวางหน้าห้องบังจอตอนกล้องล็อก ต้องซ่อนพร้อมแท่นเพลง/ตัวละคร
+                }
+
+                // Silver = PBR (คงสีเดิม ปรับ metalness/roughness ใช้ไฟเดิม ไม่เพิ่ม env)
+                if (file === 'SilverCoin.glb') {
+                    medalSilverRoot = gltf.scene;
+                    applyPBR(gltf.scene, 'SilverCoin.glb');
+                    medalSilverLabel = attachMedalLabel(gltf.scene, 'silver');
+                    refreshMedalLabels();
+                    focusHidden.push(gltf.scene); // เหรียญวางหน้าห้องบังจอตอนกล้องล็อก ต้องซ่อนพร้อมแท่นเพลง/ตัวละคร
+                }
+
+                // Bronze = Vertex Shader (onBeforeCompile + uTime wobble ตาม normal)
+                if (file === 'BronzeCoin.glb') {
+                    medalBronzeRoot = gltf.scene;
+                    applyBronzeVertex(gltf.scene);
+                    medalBronzeLabel = attachMedalLabel(gltf.scene, 'bronze');
+                    refreshMedalLabels();
+                    focusHidden.push(gltf.scene); // เหรียญวางหน้าห้องบังจอตอนกล้องล็อก ต้องซ่อนพร้อมแท่นเพลง/ตัวละคร
+                }
+
                 console.log('Model loaded: ' + ASSET_BASE + file);
-                if (--pending === 0) frameClassroom();
+                if (--pending === 0) { frameClassroom(); refreshMedalLabels(); }
             }, undefined, (error) => {
                 // โหลดไฟล์ใดไม่ได้ก็ยังจัดวางฉากที่เหลือ ไม่ค้างทั้งฉาก
                 console.error('Error loading ' + ASSET_BASE + file + ':', error);
@@ -688,6 +1069,8 @@
             const dt = clock.getDelta();
             if (screenMixer) screenMixer.update(dt);
             if (stickmanMixer && stickmanPlaying) stickmanMixer.update(dt);
+            // Vertex wobble เหรียญทองแดง: เวลาเดียวแชร์ทุก material (t ของ rAF เป็น ms)
+            bronzeTime.value = (typeof t === 'number' ? t : performance.now()) * 0.001;
             settleScreenState();
 
             // ยิง raycast ทีเดียวต่อเฟรม ไม่ใช่ทุก pointermove
@@ -700,19 +1083,50 @@
                 setLabel(screenLabel, '', false);
                 // ตัวละครถูกซ่อนตอนฟักส์ ป้ายของมันต้องหายตาม ไม่งั้นจะลอยกลางจอโดยไม่มีที่มา
                 setLabel(stickLabel, '', false);
+                // ป้ายเหรียญซ่อนตอนล็อกกล้องเหมือนกัน ไม่งั้นจะลอยทับคำอธิบายใน focusHint
+                setLabel(medalGoldLabel, '', false);
+                setLabel(medalSilverLabel, '', false);
+                setLabel(medalBronzeLabel, '', false);
+                // สปอตเหรียญดับตอนล็อกจอ (กล้องหันหน้าจออยู่แล้ว)
+                for (const e of medalSpots) e.spot.visible = false;
                 // ไฟเหลืองต้องปิดตามตัวละครเหมือนกัน ไม่งั้นจะเหลือวงแสงบนพื้นที่ไม่มีตัวละคร
                 if (stickSpot) stickSpot.visible = false;
+            } else if (medalFocus) {
+                // ล็อกเหรียญอยู่: ไม่ raycast/hover ใด ๆ cursor ปกติ ป้ายค้างเฉพาะเหรียญที่ล็อก
+                // ออกได้แค่ปุ่มย้อนกลับหรือ Esc (คลิกฉากถูกบล็อกที่ pointerup แล้ว)
+                document.body.style.cursor = 'default';
+                setLabel(screenLabel, '', false);
+                setLabel(stickLabel, '', false);
+                setLabel(medalGoldLabel, MEDAL_INFO.gold[lang].tag, medalFocus === 'gold');
+                setLabel(medalSilverLabel, MEDAL_INFO.silver[lang].tag, medalFocus === 'silver');
+                setLabel(medalBronzeLabel, MEDAL_INFO.bronze[lang].tag, medalFocus === 'bronze');
+                for (const e of medalSpots) e.spot.visible = (medalFocus === e.kind && e.kind !== 'gold');
+                if (stickSpot) stickSpot.visible = stickmanPlaying;
             } else {
                 const hovering = pickHousing();
                 const clickable = hovering && (canOpenScreen() || canCloseScreen());
                 // ผิวจออยู่หลังกล่องจอ ให้กล่องจอได้สิทธิ์ก่อนเสมอ
                 const onSurface = !clickable && canFocusScreen() && pickSurface();
+                // 3 เหรียญอยู่คนละจุดกับจอ/ตัวละคร เช็คหลังจอ แต่ก่อนตัวละคร (เหรียญเล็กกว่าต้องได้สิทธิ์ก่อน)
+                const onGold = !clickable && !onSurface && pickMedal(medalGoldRoot);
+                const onSilver = !clickable && !onSurface && !onGold && pickMedal(medalSilverRoot);
+                const onBronze = !clickable && !onSurface && !onGold && !onSilver && pickMedal(medalBronzeRoot);
+                const onMedal = onGold || onSilver || onBronze;
                 // ตัวละครอยู่ไกลจอมากจึงไม่ชนกับการคลิกจอ เช็คต่อท้ายสุดได้เลย
                 // ยิงครั้งเดียวแล้วใช้ทั้ง cursor, ป้าย และไฟ ไม่ยิงซ้ำหลายรอบต่อเฟรม
-                const onStickman = !clickable && !onSurface && pickStickman();
-                document.body.style.cursor = clickable ? 'pointer' : (onSurface ? 'zoom-in' : (onStickman ? 'pointer' : 'default'));
+                const onStickman = !clickable && !onSurface && !onMedal && pickStickman();
+                document.body.style.cursor = clickable ? 'pointer' : (onSurface || onMedal ? 'zoom-in' : (onStickman ? 'pointer' : 'default'));
                 const actionText = canCloseScreen() ? LANG[lang].close : LANG[lang].open;
                 setLabel(screenLabel, actionText, clickable);
+                // ป้ายเหรียญบอกเทคนิค shader ของเหรียญนั้น (ข้อความตามภาษาใน refreshMedalLabels)
+                // เหรียญที่ inspect อยู่ป้ายค้างไว้ ที่เหลือโชว์ตอน hover
+                setLabel(medalGoldLabel, MEDAL_INFO.gold[lang].tag, onGold || medalFocus === 'gold');
+                setLabel(medalSilverLabel, MEDAL_INFO.silver[lang].tag, onSilver || medalFocus === 'silver');
+                setLabel(medalBronzeLabel, MEDAL_INFO.bronze[lang].tag, onBronze || medalFocus === 'bronze');
+                // สปอตเหรียญติดเฉพาะตอน inspect (คลิก) ไม่ติดตอนชี้ hover
+                // เลิก inspect (medalFocus=null) เมื่อไหร่ ไฟดับเฟรมถัดไปเอง ไม่ต้องแตะฟังก์ชันออก
+                // Gold ไม่มีสปอต (ไม่สร้างใน placeMedalLights) กันเหนียวปิดไว้ด้วยเงื่อนไข kind
+                for (const e of medalSpots) e.spot.visible = (medalFocus === e.kind && e.kind !== 'gold');
                 // ป้ายตัวละครบอกว่าจะกดแล้วเกิดอะไร: หยุดอยู่ -> "เล่น" (การนักนำ) / เล่นอยู่ -> "หยุด"
                 setLabel(stickLabel, stickmanPlaying ? LANG[lang].pause : LANG[lang].play, onStickman);
                 // ไฟเหลืองขึ้นตอนชี้ตัวละคร และค้างต่อระหว่างที่ animation กำลังเล่น
@@ -778,18 +1192,29 @@
             const dragged = Math.hypot(event.clientX - pointerDownX, event.clientY - pointerDownY);
             if (dragged > CLICK_MAX_DRAG) return; // เป็นการลากหมุนมุมมอง ไม่ใช่การคลิก
             if (focusMode) return; // ล็อกกล้องอยู่ คลิกฉากไม่ทำอะไร ออกด้วย Back/Esc เท่านั้น
+            if (medalFocus) return; // inspect เหรียญอยู่ คลิกฉากไม่ทำอะไร ออกด้วย Back/Esc เท่านั้น
             pointerX = event.clientX;
             pointerY = event.clientY;
             pointerInside = true;
             // กล่องจอมาก่อน เพราะผิวจอทับกล่องอยู่ตอนจอกาง
             // คลิกกล่อง = สลับเปิด/ปิดฉาย / คลิกผิวจอตอนเปิดนิ่ง = ล็อกกล้องหน้าจอ
-            // คลิกตัวละคร = เล่น/หยุด animation การนักนำ
+            // คลิกเหรียญ = inspect (เข้าได้เฉพาะตอนยังไม่ล็อกเหรียญอื่น) / คลิกตัวละคร = เล่น/หยุด animation
+            // (ถึงจุดนี้ medalFocus เป็น null เสมอ เพราะมีการ์ดด้านบน — ไม่มีการสลับ/ล้าง inspect จากคลิกฉาก)
             if (pickHousing()) {
                 toggleScreen();
             } else if (canFocusScreen() && pickSurface()) {
                 enterScreenFocus();
+            } else if (pickMedal(medalGoldRoot)) {
+                enterMedalInspect('gold');
+            } else if (pickMedal(medalSilverRoot)) {
+                enterMedalInspect('silver');
+            } else if (pickMedal(medalBronzeRoot)) {
+                enterMedalInspect('bronze');
             } else if (pickStickman()) {
+                exitMedalInspect();
                 toggleStickman();
+            } else {
+                exitMedalInspect();
             }
         });
 
@@ -800,15 +1225,18 @@
                 lang = btn.dataset.lang;
                 langButtons.forEach((b) => b.classList.toggle('on', b === btn));
                 focusBack.textContent = LANG[lang].back;
-                focusHint.textContent = LANG[lang].hint;
+                // ตอนล็อกเหรียญอยู่ hint ต้องเป็นคำอธิบาย shader ภาษานั้น ไม่ใช่ hint จอ
+                focusHint.textContent = medalFocus ? MEDAL_INFO[medalFocus][lang].hint : LANG[lang].hint;
+                refreshMedalLabels();
                 applyLanguage();
             });
         });
 
-        // ทางออกจากโหมดล็อกกล้อง: ปุ่มย้อนกลับ หรือปุ่ม Esc
-        focusBack.addEventListener('click', exitScreenFocus);
+        // ทางออกจากโหมดล็อกกล้อง/โหมด inspect เหรียญ: ปุ่มย้อนกลับ หรือปุ่ม Esc
+        // (แต่ละฟังก์ชันมีการ์ดภายในตัวเอง เรียกคู่กันได้ อันไหนไม่ active ก็ไม่ทำอะไร)
+        focusBack.addEventListener('click', () => { exitMedalInspect(); exitScreenFocus(); });
         window.addEventListener('keydown', (event) => {
-            if (event.key === 'Escape' || event.key === 'Esc') exitScreenFocus();
+            if (event.key === 'Escape' || event.key === 'Esc') { exitMedalInspect(); exitScreenFocus(); }
         });
 
         window.addEventListener('resize', () => {
@@ -818,7 +1246,9 @@
             labelRenderer.setSize(window.innerWidth, window.innerHeight);
             // ล็อดอยู่ต้องคำนวณระยะใหม่ตาม aspect ใหม่ ไม่งั้นจอจะล้นเฟรมหรือเล็กเกินไป
             if (focusMode) {
-                frameScreenCamera();
+                // โฟกัสเหรียญให้เฟรมเหรียญนั้น โฟกัสจอให้เฟรมจอ
+                if (medalFocus) frameObjectCamera(medalRootOf(medalFocus), MEDAL_FOCUS_MARGIN, MEDAL_FOCUS_MIN_DIST);
+                else frameScreenCamera();
                 camera.position.copy(focusPos);
                 controls.target.copy(focusCenter);
             }
