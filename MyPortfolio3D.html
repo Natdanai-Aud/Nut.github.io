@@ -275,8 +275,8 @@
         // PBR ใช้ไฟเดิมในฉากเท่านั้น ไม่เพิ่ม envMap/HDRI ตามที่ตกลงกัน
         const MEDAL_INFO = {
             gold: {
-                th: { tag: 'ทอง: Cel Shading', hint: 'เหรียญทอง Cel (Toon 3-step + ขอบดำ) — กด Esc เพื่อออก' },
-                en: { tag: 'Gold: Cel', hint: 'Gold medal Cel (Toon 3-step + outline) — Press Esc to exit' }
+                th: { tag: 'ทอง: Cel Shading', hint: 'เหรียญทอง Cel (Toon 5-step + ขอบดำ) — กด Esc เพื่อออก' },
+                en: { tag: 'Gold: Cel', hint: 'Gold medal Cel (Toon 5-step + outline) — Press Esc to exit' }
             },
             silver: {
                 th: { tag: 'เงิน: PBR', hint: 'เหรียญเงิน PBR (metalness 1 / roughness 0.28) — กด Esc เพื่อออก' },
@@ -288,6 +288,7 @@
             }
         };
         const PBR_PARAMS = { metalness: 1.0, roughness: 0.28 };
+        const CEL_DEFAULT_STEPS = [90, 160, 255];
         const CEL_OUTLINE_COLOR = 0x111111;
         const CEL_OUTLINE_SCALE = 1.03;
         // Cel เข้มเฉพาะเหรียญทอง (Silver ไม่ใช้ Cel แล้ว): 5-step แถบแข็งกว่า + ขอบหนากว่า
@@ -316,7 +317,6 @@
         let medalBronzeLabel = null;
         let medalFocus = null; // null | 'gold' | 'silver' | 'bronze' (โหมด inspect: ไม่ล็อกกล้อง)
         // จุดคืนกล้องตอนเลิก inspect (แยกจากของจอ กันทับกัน)
-        // จำเฉพาะตอนเริ่ม inspect จากสถานะว่าง ไม่จำตอนสลับเหรียญ A->B (ไม่งั้นจุดคืนกลายเป็นวิวเหรียญ A)
         const savedMedalPos = new THREE.Vector3();
         const savedMedalTarget = new THREE.Vector3();
         let hasSavedMedal = false;
@@ -531,8 +531,8 @@
             if (!frameScreenCamera()) return; // คำนวณมุมกล้องไม่ได้ ก็ไม่ล็อก
             enterFocusCommon();
             medalFocus = null;
-            hasSavedMedal = false; // จอยึดวิวปัจจุบัน (วิวเหรียญ) เป็นจุดคืนของมันแทน ไม่ซ้อน restore 2 ชั้น
-            setFocusHidden(true); // แท่นเพลงกับตัวละครอยู่ระหว่างกล้องกับจอ ต้องซ่อนไม่ให้บังจอ
+            hasSavedMedal = false; // จอยึดวิวปัจจุบันเป็นจุดคืนของมันแทน ไม่ซ้อน restore 2 ชั้น
+            setFocusHidden(true); // วัตถุระหว่างกล้องกับจอ (แท่นเพลง ตัวละคร เหรียญ) ต้องซ่อนไม่ให้บังจอ
             focusHint.textContent = LANG[lang].hint;
             console.log('Screen focus: locked');
         }
@@ -542,7 +542,7 @@
             focusMode = false;
             medalFocus = null;
             hasSavedMedal = false;
-            setFocusHidden(false); // คืนแท่นเพลงกับตัวละครกลับเข้าฉาก
+            setFocusHidden(false); // คืนวัตถุที่ซ่อนตอนล็อกจอกลับเข้าฉาก
             focusAnim = null;
             camera.position.copy(savedCameraPos);
             controls.target.copy(savedTarget);
@@ -556,19 +556,29 @@
         // ===== Shader 3 เหรียญ: Gold Cel / Silver PBR / Bronze Vertex =====
         // PBR: คงสี/map เดิมของไฟล์ไว้ ปรับแค่ metalness/roughness ให้เห็น PBR ชัด
         // (ไม่เพิ่ม envMap/HDRI/ไฟใหม่ ใช้ไฟเดิม 4 ดวงในฉากเท่านั้น)
-        function applyPBR(root, label) {
-            let n = 0;
+        // ตัวช่วยร่วม: ไล่ทุก material ของ mesh ใต้ root (ข้ามเปลือก outline ของ Cel)
+        function forEachMeshMaterial(root, fn) {
+            const seen = new Set();
             root.traverse((child) => {
-                if (!child.isMesh) return;
+                if (!child.isMesh || child.userData.isOutline) return;
                 const mats = Array.isArray(child.material) ? child.material : [child.material];
                 mats.forEach((m) => {
-                    if (m && m.isMeshStandardMaterial) {
-                        m.metalness = PBR_PARAMS.metalness;
-                        m.roughness = PBR_PARAMS.roughness;
-                        m.needsUpdate = true;
-                        n++;
+                    if (m && !seen.has(m)) {
+                        seen.add(m);
+                        fn(m, child);
                     }
                 });
+            });
+        }
+        function applyPBR(root, label) {
+            let n = 0;
+            forEachMeshMaterial(root, (m) => {
+                if (m.isMeshStandardMaterial) {
+                    m.metalness = PBR_PARAMS.metalness;
+                    m.roughness = PBR_PARAMS.roughness;
+                    m.needsUpdate = true;
+                    n++;
+                }
             });
             if (!n) console.error('PBR: no MeshStandardMaterial found in ' + label);
             else console.log('PBR applied to', label, n, 'material(s): metalness', PBR_PARAMS.metalness, 'roughness', PBR_PARAMS.roughness);
@@ -578,9 +588,9 @@
         // รับ steps ได้ (default 3-step เดิม) แคชตามค่า steps
         const celGradientMaps = {};
         function getCelGradientMap(steps) {
-            const key = (steps || [90, 160, 255]).join(',');
+            const key = (steps || CEL_DEFAULT_STEPS).join(',');
             if (celGradientMaps[key]) return celGradientMaps[key];
-            const arr = new Uint8Array(steps || [90, 160, 255]);
+            const arr = new Uint8Array(steps || CEL_DEFAULT_STEPS);
             const tex = new THREE.DataTexture(arr, arr.length, 1, THREE.LuminanceFormat);
             tex.minFilter = THREE.NearestFilter;
             tex.magFilter = THREE.NearestFilter;
@@ -592,10 +602,10 @@
 
         // Cel: แทนทุก mesh ด้วย Toon + คงสีเดิมของชิ้นนั้นไว้
         // แล้วแปะเปลือก outline (inverted hull) เป็น child ของแต่ละ mesh
-        // opts: { steps, outlineScale } — default คงเดิม 3-step + CEL_OUTLINE_SCALE
+        // opts: { steps, outlineScale } — default CEL_DEFAULT_STEPS + CEL_OUTLINE_SCALE
         function applyCel(root, label, opts) {
             const o = opts || {};
-            const steps = o.steps || [90, 160, 255];
+            const steps = o.steps || CEL_DEFAULT_STEPS;
             const outlineScale = o.outlineScale || CEL_OUTLINE_SCALE;
             const gradientMap = getCelGradientMap(steps);
             let n = 0;
@@ -624,27 +634,21 @@
         // ขยับจุดยอดตาม normal ด้วย sine 2 ชั้น (uTime มาจาก bronzeTime ที่ animate อัปเดต)
         function applyBronzeVertex(root) {
             let n = 0;
-            const seen = new Set();
-            root.traverse((child) => {
-                if (!child.isMesh || child.userData.isOutline) return;
-                const mats = Array.isArray(child.material) ? child.material : [child.material];
-                mats.forEach((m) => {
-                    if (m && m.isMeshStandardMaterial && !seen.has(m)) {
-                        seen.add(m);
-                        m.onBeforeCompile = (shader) => {
-                            shader.uniforms.uTime = bronzeTime;
-                            shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
-                                '#include <begin_vertex>',
-                                '#include <begin_vertex>\n' +
-                                'float bronzeW = sin(position.y * 12.0 + uTime * 2.5) * 0.5 + sin(position.x * 9.0 - uTime * 1.8) * 0.5;\n' +
-                                'transformed += normal * bronzeW * ' + BRONZE_WOBBLE_AMP.toFixed(3) + ';'
-                            );
-                        };
-                        m.customProgramCacheKey = () => 'bronzeWobble';
-                        m.needsUpdate = true;
-                        n++;
-                    }
-                });
+            forEachMeshMaterial(root, (m) => {
+                if (m.isMeshStandardMaterial) {
+                    m.onBeforeCompile = (shader) => {
+                        shader.uniforms.uTime = bronzeTime;
+                        shader.vertexShader = 'uniform float uTime;\n' + shader.vertexShader.replace(
+                            '#include <begin_vertex>',
+                            '#include <begin_vertex>\n' +
+                            'float bronzeW = sin(position.y * 12.0 + uTime * 2.5) * 0.5 + sin(position.x * 9.0 - uTime * 1.8) * 0.5;\n' +
+                            'transformed += normal * bronzeW * ' + BRONZE_WOBBLE_AMP.toFixed(3) + ';'
+                        );
+                    };
+                    m.customProgramCacheKey = () => 'bronzeWobble';
+                    m.needsUpdate = true;
+                    n++;
+                }
             });
             if (!n) console.error('Bronze Vertex: no MeshStandardMaterial found in BronzeCoin.glb');
             else console.log('Bronze Vertex applied to', n, 'material(s): sine wobble amp', BRONZE_WOBBLE_AMP);
@@ -713,17 +717,32 @@
             savedCameraPos.copy(camera.position);
             savedTarget.copy(controls.target);
             focusMode = true;
-            focusAnim = {
-                start: performance.now(),
-                fromPos: camera.position.clone(),
-                toPos: focusPos.clone(),
-                fromTarget: controls.target.clone(),
-                toTarget: focusCenter.clone()
-            };
+            startFocusTween(focusPos, focusCenter);
             controls.enabled = false;
             focusUI.hidden = false;
             backBtnEl.style.display = 'none';
             setLabel(screenLabel, '', false);
+        }
+
+        // ตัวช่วยร่วม: เริ่ม tween กล้องลื่น (easeInOutCubic ที่ animate) ไปยังตำแหน่ง/เป้าที่คำนวณไว้
+        function startFocusTween(toPos, toTarget) {
+            focusAnim = {
+                start: performance.now(),
+                fromPos: camera.position.clone(),
+                toPos: toPos.clone(),
+                fromTarget: controls.target.clone(),
+                toTarget: toTarget.clone()
+            };
+        }
+
+        // ตัวช่วยร่วม: สร้างสปอตดับเริ่มต้น (ติดเฉพาะตอน inspect/hover ตามเงื่อนไขผู้เรียก)
+        function makeSpot(color, intensity, distance, angle, penumbra, decay) {
+            const spot = new THREE.SpotLight(color, intensity, distance, angle, penumbra, decay);
+            spot.castShadow = false;
+            spot.visible = false;
+            scene.add(spot);
+            scene.add(spot.target);
+            return spot;
         }
 
         // ===== โหมด inspect เหรียญ: ล็อก picking จนกว่าจะออกด้วยปุ่ม/Esc =====
@@ -736,19 +755,11 @@
             const root = medalRootOf(kind);
             if (!root) return;
             if (!frameObjectCamera(root, MEDAL_FOCUS_MARGIN, MEDAL_FOCUS_MIN_DIST)) return; // คำนวณมุมไม่ได้ก็ไม่เล็ง
-            // จำจุดคืนเฉพาะตอนเริ่มจากสถานะว่าง (เข้าถึงจุดนี้ได้เฉพาะตอนยังไม่ล็อก เพราะการ์ดด้านบน)
-            if (!medalFocus) {
-                savedMedalPos.copy(camera.position);
-                savedMedalTarget.copy(controls.target);
-                hasSavedMedal = true;
-            }
-            focusAnim = {
-                start: performance.now(),
-                fromPos: camera.position.clone(),
-                toPos: focusPos.clone(),
-                fromTarget: controls.target.clone(),
-                toTarget: focusCenter.clone()
-            };
+            // เข้าถึงจุดนี้ได้เฉพาะตอนยังไม่ล็อก (การ์ดด้านบน) จึงบันทึกจุดคืนได้ตรง ๆ
+            savedMedalPos.copy(camera.position);
+            savedMedalTarget.copy(controls.target);
+            hasSavedMedal = true;
+            startFocusTween(focusPos, focusCenter);
             medalFocus = kind;
             controls.enabled = true;
             controls.enableZoom = true;
@@ -761,7 +772,7 @@
         }
 
         // เลิก inspect = ลอยกล้องกลับจุดก่อนคลิก (tween ผ่าน focusAnim เดิม) + เปิด pan คืน
-        // ครอบคลุมทั้ง 4 ทางออก: คลิกเหรียญซ้ำ / คลิกพื้นที่ว่าง / Back / Esc / คลิกตัวละคร
+        // ออกได้แค่ปุ่มย้อนกลับหรือ Esc (คลิกฉากถูกบล็อกตอนล็อกเหรียญแล้ว)
         function exitMedalInspect() {
             if (!medalFocus) return;
             medalFocus = null;
@@ -771,13 +782,7 @@
             backBtnEl.style.display = '';
             if (hasSavedMedal) {
                 hasSavedMedal = false;
-                focusAnim = {
-                    start: performance.now(),
-                    fromPos: camera.position.clone(),
-                    toPos: savedMedalPos.clone(),
-                    fromTarget: controls.target.clone(),
-                    toTarget: savedMedalTarget.clone()
-                };
+                startFocusTween(savedMedalPos, savedMedalTarget);
             } else {
                 focusAnim = null;
             }
@@ -854,7 +859,7 @@
             if (box.isEmpty()) return;
             const center = box.getCenter(new THREE.Vector3());
             if (!stickSpot) {
-                stickSpot = new THREE.SpotLight(
+                stickSpot = makeSpot(
                     STICK_SPOT_COLOR,
                     STICK_SPOT_INTENSITY,
                     STICK_SPOT_DISTANCE,
@@ -862,10 +867,6 @@
                     STICK_SPOT_PENUMBRA,
                     STICK_SPOT_DECAY
                 );
-                stickSpot.castShadow = false;
-                stickSpot.visible = false;
-                scene.add(stickSpot);
-                scene.add(stickSpot.target);
             }
             stickSpot.position.set(center.x, box.max.y + STICK_SPOT_HEIGHT, center.z + STICK_SPOT_FRONT);
             stickSpot.target.position.copy(center);
@@ -892,7 +893,7 @@
                 let entry = null;
                 for (const e of medalSpots) { if (e.kind === kind) { entry = e; break; } }
                 if (!entry) {
-                    const spot = new THREE.SpotLight(
+                    const spot = makeSpot(
                         MEDAL_SPOT_COLOR,
                         MEDAL_SPOT_INTENSITY,
                         MEDAL_SPOT_DISTANCE,
@@ -900,10 +901,6 @@
                         MEDAL_SPOT_PENUMBRA,
                         MEDAL_SPOT_DECAY
                     );
-                    spot.castShadow = false;
-                    spot.visible = false; // เริ่มดับไว้ ติดเฉพาะตอน inspect เหรียญนั้น
-                    scene.add(spot);
-                    scene.add(spot.target);
                     entry = { kind: kind, spot: spot };
                     medalSpots.push(entry);
                 }
@@ -1027,7 +1024,7 @@
                 }
 
                 // ===== 3 เหรียญ: โชว์ Shader คนละแบบ =====
-                // Gold = Cel (Toon 3-step + ขอบดำ inverted hull)
+                // Gold = Cel (Toon 5-step + ขอบดำ inverted hull)
                 if (file === 'GoldCoin.glb') {
                     medalGoldRoot = gltf.scene;
                     applyCel(gltf.scene, 'GoldCoin.glb', { steps: GOLD_CEL_STEPS, outlineScale: GOLD_CEL_OUTLINE_SCALE });
